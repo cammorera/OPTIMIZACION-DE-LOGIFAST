@@ -1,0 +1,5 @@
+streamlit>=1.35.0
+pandas>=2.0.0
+plotly>=5.18.0
+pulp>=2.7.0
+# amplpy>=0.13.0  # opcional — descomenta si tienes AMPL instalado
