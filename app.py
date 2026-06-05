@@ -3,26 +3,26 @@ app.py — Cross Docking Optimizer · LogiFast CR · UCR I-2026
 ===========================================================
 Streamlit app: carga datos formato TS5, resuelve MIP,
 muestra resultados, Gantt y flujo de productos.
-
+ 
 Dependencias: streamlit, pandas, plotly, pulp
 (amplpy + HiGHS/CPLEX/Gurobi opcionales — mejora performance)
 """
-
+ 
 import io
 from datetime import datetime
-
+ 
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import streamlit as st
-
+ 
 from solver import (
     CrossDockInstance,
     SolverResult,
     parse_ts5,
     solve,
 )
-
+ 
 # ─── Datos de ejemplo (instancia TS5) ────────────────────────────────────────
 _TS5_EXAMPLE = """\
 i\t5
@@ -64,7 +64,7 @@ s\t3\t6\t9
 s\t3\t7\t77
 s\t3\t8\t61
 """
-
+ 
 # ─── Página ───────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Cross Docking Optimizer · LogiFast CR",
@@ -72,47 +72,126 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
+ 
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap');
-
+ 
 html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
-
-.kpi {
-    background: #0f172a;
-    border: 1px solid #1e3a5f;
-    border-radius: 10px;
-    padding: 1.1rem 1.4rem;
-    text-align: center;
+ 
+/* Fondo blanco general */
+.stApp, .main .block-container {
+    background-color: #ffffff !important;
 }
-.kpi-val   { font-size: 2.2rem; font-weight: 700; color: #38bdf8; line-height: 1.1; }
-.kpi-label { font-size: 0.78rem; color: #94a3b8; margin-top: 4px; text-transform: uppercase; letter-spacing: .05em; }
-
-.sec { font-size: 1rem; font-weight: 700; color: #e2e8f0;
-       border-left: 3px solid #38bdf8; padding-left: 9px;
-       margin: 1.4rem 0 .6rem 0; }
-
+ 
+/* KPI cards con fondo azul muy suave */
+.kpi {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 12px;
+    padding: 1.2rem 1.5rem;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(59,130,246,0.08);
+}
+.kpi-val   { font-size: 2.2rem; font-weight: 700; color: #1d4ed8; line-height: 1.1; }
+.kpi-label { font-size: 0.78rem; color: #64748b; margin-top: 4px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+ 
+/* Encabezados de sección */
+.sec { font-size: 1rem; font-weight: 700; color: #1e3a8a;
+       border-left: 4px solid #2563eb; padding-left: 10px;
+       margin: 1.6rem 0 .7rem 0; background: #f0f7ff;
+       border-radius: 0 6px 6px 0; padding-top: 6px; padding-bottom: 6px; }
+ 
+/* Badges */
 .badge {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 34px; height: 34px; border-radius: 50%;
-    font-weight: 700; font-size: .9rem; margin: 2px;
+    width: 36px; height: 36px; border-radius: 50%;
+    font-weight: 700; font-size: .9rem; margin: 3px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.12);
 }
-.bi { background: #0ea5e9; color: #fff; }
-.bo { background: #f59e0b; color: #fff; }
-
-div[data-testid="stSidebar"] { background: #0f172a; }
+.bi { background: #2563eb; color: #fff; }
+.bo { background: #0891b2; color: #fff; }
+ 
+/* Sidebar en azul oscuro */
+div[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #1e3a8a 0%, #1d4ed8 100%) !important;
+}
+div[data-testid="stSidebar"] * {
+    color: #e0eaff !important;
+}
+div[data-testid="stSidebar"] .stSelectbox label,
+div[data-testid="stSidebar"] .stSlider label,
+div[data-testid="stSidebar"] p,
+div[data-testid="stSidebar"] span {
+    color: #bfdbfe !important;
+}
+div[data-testid="stSidebar"] h2,
+div[data-testid="stSidebar"] h3 {
+    color: #ffffff !important;
+}
+div[data-testid="stSidebar"] .stDivider { border-color: #3b82f6 !important; }
+ 
+/* Botones primarios en azul */
+div.stButton > button[kind="primary"],
+div.stButton > button {
+    background-color: #2563eb !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    padding: 0.55rem 1.2rem !important;
+    transition: background 0.2s ease, box-shadow 0.2s ease !important;
+    box-shadow: 0 2px 6px rgba(37,99,235,0.25) !important;
+}
+div.stButton > button:hover {
+    background-color: #1d4ed8 !important;
+    box-shadow: 0 4px 12px rgba(37,99,235,0.35) !important;
+}
+ 
+/* Botones de descarga */
+div.stDownloadButton > button {
+    background-color: #eff6ff !important;
+    color: #1d4ed8 !important;
+    border: 2px solid #2563eb !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+}
+div.stDownloadButton > button:hover {
+    background-color: #2563eb !important;
+    color: #ffffff !important;
+}
+ 
+/* Tabs estilo azul */
+div[data-testid="stTabs"] button {
+    color: #64748b !important;
+    font-weight: 600 !important;
+}
+div[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #2563eb !important;
+    border-bottom-color: #2563eb !important;
+}
+ 
+/* Dataframes con header azul */
+.stDataFrame thead tr th {
+    background-color: #2563eb !important;
+    color: white !important;
+}
+ 
+/* Título principal */
+h1 { color: #1e3a8a !important; }
+h2, h3 { color: #1d4ed8 !important; }
 </style>
 """, unsafe_allow_html=True)
-
-
+ 
+ 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 🚛 Cross Docking")
     st.markdown("**LogiFast CR — UCR · IE**")
     st.markdown("*MIP · I Semestre 2026*")
     st.divider()
-
+ 
     st.markdown("### ⚙️ Solver")
     solver_choice = st.selectbox(
         "Solver preferido",
@@ -123,33 +202,33 @@ with st.sidebar:
     mip_gap    = st.select_slider(
         "MIP Gap", [0.0001, 0.001, 0.005, 0.01, 0.05], value=0.001
     )
-
+ 
     st.divider()
     st.markdown("### 📋 Parámetros operativos")
     st.code("t_unit   = 1  min/ud\nt_trans  = 5  min/lote\nt_switch = 10 min/cambio",
             language="text")
     st.divider()
     st.caption("Universidad de Costa Rica · Ing. Industrial")
-
-
+ 
+ 
 # ─── Encabezado ───────────────────────────────────────────────────────────────
 st.markdown("# 🚛 Cross Docking Optimizer")
 st.markdown("**Minimización del makespan · Programación Entera Mixta (MIP)**")
 st.divider()
-
+ 
 # ─── Carga de datos ───────────────────────────────────────────────────────────
 st.markdown('<div class="sec">📂 Datos de entrada</div>', unsafe_allow_html=True)
-
+ 
 tab_ex, tab_up = st.tabs(["🗂 Ejemplo TS5", "📤 Subir archivo"])
-
+ 
 inst: CrossDockInstance | None = None
-
+ 
 with tab_ex:
     st.code(_TS5_EXAMPLE, language="text")
     if st.button("✅ Usar datos de ejemplo", use_container_width=True):
         inst = parse_ts5(_TS5_EXAMPLE)
         st.session_state["inst"] = inst
-
+ 
 with tab_up:
     uploaded = st.file_uploader("Archivo .txt con formato TS5", type=["txt"])
     if uploaded:
@@ -157,27 +236,27 @@ with tab_up:
         inst = parse_ts5(content)
         st.session_state["inst"] = inst
         st.success(f"'{uploaded.name}' cargado.")
-
+ 
 # Recuperar de sesión
 if inst is None:
     inst = st.session_state.get("inst")
-
+ 
 # ─── Vista previa de datos ────────────────────────────────────────────────────
 if inst is not None:
     errors = inst.validate_balance()
     if errors:
         st.error("⚠ Desequilibrio oferta-demanda:\n" + "\n".join(errors))
         st.stop()
-
+ 
     st.success(
         f"✅ Instancia cargada — "
         f"{inst.num_inbound} camiones entrada | "
         f"{inst.num_outbound} camiones salida | "
         f"{inst.num_products} productos"
     )
-
+ 
     c1, c2 = st.columns(2)
-
+ 
     with c1:
         st.markdown('<div class="sec">📥 Camiones de entrada</div>', unsafe_allow_html=True)
         rows = []
@@ -192,7 +271,7 @@ if inst is not None:
             rows.append(row)
         st.dataframe(pd.DataFrame(rows).set_index("Camión"),
                      use_container_width=True, height=230)
-
+ 
     with c2:
         st.markdown('<div class="sec">📤 Camiones de salida</div>', unsafe_allow_html=True)
         rows = []
@@ -207,7 +286,7 @@ if inst is not None:
             rows.append(row)
         st.dataframe(pd.DataFrame(rows).set_index("Camión"),
                      use_container_width=True, height=200)
-
+ 
     # ─── Botón de optimización ────────────────────────────────────────────────
     st.divider()
     if st.button("🔍 Optimizar secuencia", type="primary", use_container_width=True):
@@ -219,15 +298,15 @@ if inst is not None:
                 mip_gap=mip_gap,
             )
         st.session_state["result"] = result
-
+ 
     # ─── Resultados ───────────────────────────────────────────────────────────
     if "result" in st.session_state:
         result: SolverResult = st.session_state["result"]
-
+ 
         if result.status != "optimal":
             st.error(f"❌ No se encontró solución: {result.message or result.status}")
             st.stop()
-
+ 
         # KPIs
         st.markdown('<div class="sec">📊 Resultados</div>', unsafe_allow_html=True)
         k1, k2, k3, k4 = st.columns(4)
@@ -243,12 +322,12 @@ if inst is not None:
                 f'<div class="kpi-label">{label}</div></div>',
                 unsafe_allow_html=True,
             )
-
+ 
         st.markdown("")
-
+ 
         # Órdenes
         ci, co = st.columns(2)
-
+ 
         with ci:
             st.markdown("**Orden camiones de ENTRADA**")
             st.markdown(
@@ -268,7 +347,7 @@ if inst is not None:
             ]
             st.dataframe(pd.DataFrame(rows).set_index("Pos"),
                          use_container_width=True, height=230)
-
+ 
         with co:
             st.markdown("**Orden camiones de SALIDA**")
             st.markdown(
@@ -288,13 +367,13 @@ if inst is not None:
             ]
             st.dataframe(pd.DataFrame(rows).set_index("Pos"),
                          use_container_width=True, height=200)
-
+ 
         # ── Gantt ─────────────────────────────────────────────────────────────
         st.markdown('<div class="sec">📅 Diagrama de Gantt</div>', unsafe_allow_html=True)
-
+ 
         fig = go.Figure()
         added: set = set()
-
+ 
         def _bar(task, start, duration, color, tipo):
             show = tipo not in added
             added.add(tipo)
@@ -311,31 +390,34 @@ if inst is not None:
                     f"Duración: {duration:.0f} min<extra></extra>"
                 ),
             ))
-
+ 
         for i in inst.inbound_trucks():
-            _bar(f"Entrada {i}", result.a[i], result.di[i], "#0ea5e9", "Descarga")
+            _bar(f"Entrada {i}", result.a[i], result.di[i], "#2563eb", "Descarga")
         for j in inst.outbound_trucks():
-            _bar(f"Salida {j}", result.d[j], result.lj[j], "#f59e0b", "Carga")
-
+            _bar(f"Salida {j}", result.d[j], result.lj[j], "#0891b2", "Carga")
+ 
         fig.add_vline(
-            x=result.makespan, line_dash="dash", line_color="#ef4444", line_width=2,
+            x=result.makespan, line_dash="dash", line_color="#dc2626", line_width=2,
             annotation_text=f"Makespan: {result.makespan:.0f} min",
-            annotation_font_color="#ef4444",
+            annotation_font_color="#dc2626",
         )
         fig.update_layout(
             barmode="stack",
             xaxis_title="Tiempo (minutos)",
-            plot_bgcolor="#0f172a", paper_bgcolor="#0f172a",
-            font_color="#e2e8f0",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            plot_bgcolor="#f8fafc", paper_bgcolor="#ffffff",
+            font_color="#1e3a8a",
+            xaxis=dict(gridcolor="#e2e8f0", zerolinecolor="#cbd5e1"),
+            yaxis=dict(gridcolor="#e2e8f0"),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                        bgcolor="rgba(255,255,255,0.8)", bordercolor="#bfdbfe", borderwidth=1),
             height=max(320, 55*(inst.num_inbound + inst.num_outbound) + 100),
             margin=dict(l=20, r=20, t=40, b=40),
         )
         st.plotly_chart(fig, use_container_width=True)
-
+ 
         # ── Flujo de productos ────────────────────────────────────────────────
         st.markdown('<div class="sec">🔄 Flujo de productos</div>', unsafe_allow_html=True)
-
+ 
         flow_rows = [
             {
                 "Entrada": f"E{i}",
@@ -346,11 +428,11 @@ if inst is not None:
             }
             for (i, j, k), qty in sorted(result.x.items())
         ]
-
+ 
         if flow_rows:
             df_flow = pd.DataFrame(flow_rows)
             st.dataframe(df_flow, use_container_width=True, height=320)
-
+ 
             pivot = (
                 df_flow.groupby(["Entrada","Salida"])["Unidades"]
                 .sum().unstack(fill_value=0)
@@ -362,14 +444,14 @@ if inst is not None:
                 labels=dict(x="Camión salida", y="Camión entrada", color="Unidades"),
             )
             fig_h.update_layout(
-                plot_bgcolor="#0f172a", paper_bgcolor="#0f172a", font_color="#e2e8f0"
+                plot_bgcolor="#f8fafc", paper_bgcolor="#ffffff", font_color="#1e3a8a"
             )
             st.plotly_chart(fig_h, use_container_width=True)
-
+ 
         # ── Exportar ──────────────────────────────────────────────────────────
         st.divider()
         st.markdown('<div class="sec">💾 Exportar</div>', unsafe_allow_html=True)
-
+ 
         def _summary_txt(inst: CrossDockInstance, r: SolverResult) -> str:
             lines = [
                 "=" * 54,
@@ -399,7 +481,7 @@ if inst is not None:
                 lines.append(f"    E{i}→S{j}  P{k}: {qty} uds  [{via}]")
             lines.append("=" * 54)
             return "\n".join(lines)
-
+ 
         dc1, dc2 = st.columns(2)
         with dc1:
             st.download_button(
@@ -416,6 +498,6 @@ if inst is not None:
                     file_name="crossdock_flujo.csv", mime="text/csv",
                     use_container_width=True,
                 )
-
+ 
 else:
     st.info("👈 Selecciona los datos de ejemplo o sube tu archivo TS5 para comenzar.")
