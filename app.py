@@ -205,8 +205,22 @@ with st.sidebar:
  
     st.divider()
     st.markdown("### 📋 Parámetros operativos")
-    st.code("t_unit   = 1  min/ud\nt_trans  = 5  min/lote\nt_switch = 10 min/cambio",
-            language="text")
+    t_unit = st.number_input(
+        "⏱ t_unit — min/unidad (carga/descarga)",
+        min_value=0.1, max_value=60.0, value=1.0, step=0.5,
+        help="Minutos que toma procesar una unidad de producto.",
+    )
+    t_trans = st.number_input(
+        "🔄 t_trans — min/lote (traslado interno)",
+        min_value=0.0, max_value=120.0, value=5.0, step=1.0,
+        help="Minutos de traslado interno entre muelles por lote.",
+    )
+    t_switch = st.number_input(
+        "🔀 t_switch — min (cambio entre camiones)",
+        min_value=0.0, max_value=120.0, value=10.0, step=1.0,
+        help="Minutos extra al cambiar de un camión a otro en el muelle.",
+    )
+    st.caption(f"Valores actuales: `t_unit={t_unit}` · `t_trans={t_trans}` · `t_switch={t_switch}`")
     st.divider()
     st.caption("Universidad de Costa Rica · Ing. Industrial")
  
@@ -296,6 +310,9 @@ if inst is not None:
                 preferred_solver=solver_choice,
                 time_limit=time_limit,
                 mip_gap=mip_gap,
+                t_unit=t_unit,
+                t_trans=t_trans,
+                t_switch=t_switch,
             )
         st.session_state["result"] = result
  
@@ -368,8 +385,8 @@ if inst is not None:
             st.dataframe(pd.DataFrame(rows).set_index("Pos"),
                          use_container_width=True, height=200)
  
-        # ── Gantt ─────────────────────────────────────────────────────────────
-        st.markdown('<div class="sec">📅 Diagrama de Gantt</div>', unsafe_allow_html=True)
+        # ── Gantt + Tabla de tiempos ──────────────────────────────────────────
+        st.markdown('<div class="sec">📅 Diagrama de Gantt y Tabla de Tiempos</div>', unsafe_allow_html=True)
  
         fig = go.Figure()
         added: set = set()
@@ -413,7 +430,54 @@ if inst is not None:
             height=max(320, 55*(inst.num_inbound + inst.num_outbound) + 100),
             margin=dict(l=20, r=20, t=40, b=40),
         )
-        st.plotly_chart(fig, use_container_width=True)
+ 
+        gantt_col, table_col = st.columns([3, 2])
+ 
+        with gantt_col:
+            st.plotly_chart(fig, use_container_width=True)
+ 
+        with table_col:
+            st.markdown("**⏱ Tiempos detallados**")
+ 
+            time_rows_in = [
+                {
+                    "Camión": f"E{i}",
+                    "Tipo": "Entrada",
+                    "Inicio (min)": f"{result.a[i]:.1f}",
+                    "Fin (min)": f"{result.a[i] + result.di[i]:.1f}",
+                    "Duración (min)": f"{result.di[i]:.0f}",
+                }
+                for i in result.inbound_order
+            ]
+            time_rows_out = [
+                {
+                    "Camión": f"S{j}",
+                    "Tipo": "Salida",
+                    "Inicio (min)": f"{result.d[j]:.1f}",
+                    "Fin (min)": f"{result.d[j] + result.lj[j]:.1f}",
+                    "Duración (min)": f"{result.lj[j]:.0f}",
+                }
+                for j in result.outbound_order
+            ]
+ 
+            df_times = pd.DataFrame(time_rows_in + time_rows_out)
+            st.dataframe(
+                df_times.style.apply(
+                    lambda row: [
+                        "background-color: #eff6ff; color: #1d4ed8" if row["Tipo"] == "Entrada"
+                        else "background-color: #ecfeff; color: #0e7490"
+                    ] * len(row),
+                    axis=1,
+                ),
+                use_container_width=True,
+                height=max(300, 36 * (inst.num_inbound + inst.num_outbound) + 50),
+            )
+            st.markdown(
+                f'<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;'
+                f'padding:8px 14px;font-size:0.85rem;color:#1e3a8a;margin-top:8px;">'
+                f'🏁 <b>Makespan total:</b> {result.makespan:.1f} min</div>',
+                unsafe_allow_html=True,
+            )
  
         # ── Flujo de productos ────────────────────────────────────────────────
         st.markdown('<div class="sec">🔄 Flujo de productos</div>', unsafe_allow_html=True)
